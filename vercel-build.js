@@ -9,16 +9,11 @@ if (fs.existsSync('client/package.json')) {
 // Execute Vite React build
 cp.execSync('npm run build', { stdio: 'inherit' });
 
-// Ensure compiled static assets exist in all potential Vercel output locations
+// Publish the build to the repo-root `dist` that vercel.json declares as outputDirectory.
+// (cwd is `client` here, so `../dist` is the repo root. Copying to a bare `dist` or
+// `client/dist` would target the source itself or create a junk `client/client/dist`.)
 const src = 'dist';
-const targets = ['../dist', '../client/dist', 'dist', 'client/dist'];
 
-targets.forEach(t => {
-  try {
-    if (fs.existsSync(src)) {
-      fs.cpSync(src, t, { recursive: true });
-    }
-  } catch (e) {
-    // Ignore error if target path equals source
-  }
-});
+if (fs.existsSync(src)) {
+  fs.cpSync(src, '../dist', { recursive: true });
+}
