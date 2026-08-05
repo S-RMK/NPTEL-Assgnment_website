@@ -17,6 +17,27 @@ const getAuthHeaders = () => {
     return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
 };
 
+// Reads the body as text first, so a hosting-level error page (Vercel's plain-text
+// "The page could not be found", an HTML 502, ...) surfaces as a readable message
+// instead of a raw "Unexpected token" JSON.parse crash.
+const readJson = async (res, action) => {
+    const body = await res.text();
+    let data;
+
+    try {
+        data = body ? JSON.parse(body) : {};
+    } catch {
+        throw new Error(
+            `${action} failed: the server returned a non-JSON response (HTTP ${res.status}). ` +
+            `The /api backend is not reachable — check that the API is deployed. ` +
+            `Response started with: ${body.slice(0, 80)}`
+        );
+    }
+
+    if (!res.ok) throw new Error(data.error || `${action} failed (HTTP ${res.status})`);
+    return data;
+};
+
 export const api = {
     // --- Auth APIs ---
     register: async (credentials) => {
@@ -25,8 +46,7 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(credentials)
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Registration failed');
+        const data = await readJson(res, 'Registration');
         if (data.token) localStorage.setItem('nptel_jwt_token', data.token);
         return data;
     },
@@ -37,8 +57,7 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(credentials)
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Login failed');
+        const data = await readJson(res, 'Login');
         if (data.token) localStorage.setItem('nptel_jwt_token', data.token);
         return data;
     },
