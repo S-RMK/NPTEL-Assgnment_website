@@ -17,3 +17,5 @@ server/.env
 *.db
 coverage/
 .DS_Store
+
+.vercel
