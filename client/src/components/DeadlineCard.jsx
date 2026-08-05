@@ -1,60 +1,84 @@
-import { Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-const DeadlineCard = ({ deadline }) => {
-    const now = new Date();
-    const dueDate = new Date(deadline.dueDate);
-    const diffMs = dueDate - now;
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
-    const remainingHours = diffHours % 24;
+/*
+ * The countdown used to be computed once during render, so it froze at whatever the
+ * value was when the page loaded and only moved on a refresh. It also reported
+ * "Due Tomorrow" for anything under 24 hours — including 20 minutes away.
+ */
 
-    let badgeColor = '#10b981'; // Green
-    let statusText = `${diffDays} Days ${remainingHours} Hours`;
+const SECOND = 1000;
+const MINUTE = 60 * SECOND;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
 
-    if (diffMs <= 0) {
-        badgeColor = '#ef4444'; // Red
-        statusText = 'Expired';
-    } else if (diffHours <= 24) {
-        badgeColor = '#f59e0b'; // Amber
-        statusText = diffHours <= 1 ? 'Due in 1 Hour!' : 'Due Tomorrow';
+const describe = (msLeft) => {
+    if (msLeft <= 0) return { text: 'Expired', colour: '#ef4444', urgent: false };
+
+    const days = Math.floor(msLeft / DAY);
+    const hours = Math.floor((msLeft % DAY) / HOUR);
+    const minutes = Math.floor((msLeft % HOUR) / MINUTE);
+    const seconds = Math.floor((msLeft % MINUTE) / SECOND);
+
+    // Green with a day or more left, amber inside 24h, red inside the final hour.
+    if (msLeft < HOUR) {
+        return { text: `${minutes}m ${seconds}s left`, colour: '#ef4444', urgent: true };
     }
+    if (msLeft < DAY) {
+        return { text: `${hours}h ${minutes}m left`, colour: '#f59e0b', urgent: true };
+    }
+    return { text: `${days}d ${hours}h left`, colour: '#10b981', urgent: false };
+};
+
+const DeadlineCard = ({ deadline }) => {
+    const dueDate = new Date(deadline.dueDate);
+    const valid = !Number.isNaN(dueDate.getTime());
+    const [msLeft, setMsLeft] = useState(() => dueDate - new Date());
+
+    const finalHour = msLeft < HOUR;
+
+    useEffect(() => {
+        if (!valid || dueDate - new Date() <= 0) return;
+
+        // Tick every second inside the last hour so the countdown visibly moves; once a
+        // minute otherwise, to avoid needless re-renders on a deadline days away.
+        const id = setInterval(() => setMsLeft(dueDate - new Date()), finalHour ? SECOND : MINUTE);
+        return () => clearInterval(id);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [deadline.dueDate, valid, finalHour]);
+
+    if (!valid) return null;
+
+    const status = describe(msLeft);
 
     return (
-        <div className="glass-panel" style={{
-            padding: '1.25rem',
-            borderRadius: '16px',
-            borderLeft: `5px solid ${badgeColor}`,
-            marginBottom: '1rem',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '0.75rem'
-        }}>
-            <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                    <Clock size={16} color={badgeColor} />
-                    <span style={{
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        padding: '0.15rem 0.5rem',
-                        borderRadius: '4px',
-                        background: `${badgeColor}22`,
-                        color: badgeColor
-                    }}>
-                        {statusText}
+        <div className="glass-panel deadline-card" style={{ borderLeft: `4px solid ${status.colour}` }}>
+            <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.3rem' }}>
+                    <Clock size={14} color={status.colour} />
+                    <span
+                        className={status.urgent ? 'deadline-badge deadline-badge-pulse' : 'deadline-badge'}
+                        style={{ background: `${status.colour}22`, color: status.colour }}
+                    >
+                        {status.text}
                     </span>
                 </div>
-                <h4 style={{ margin: '0.25rem 0', fontSize: '1.05rem' }}>{deadline.title}</h4>
-                <span style={{ fontSize: '0.8rem', color: 'var(--clr-text-muted)' }}>
-                    Due: {dueDate.toLocaleString()}
+                <h4 style={{ margin: '0.15rem 0', fontSize: '1rem', overflowWrap: 'anywhere' }}>{deadline.title}</h4>
+                <span style={{ fontSize: '0.78rem', color: 'var(--clr-text-muted)' }}>
+                    Due {dueDate.toLocaleString(undefined, {
+                        weekday: 'short', day: 'numeric', month: 'short',
+                        hour: '2-digit', minute: '2-digit'
+                    })}
                 </span>
             </div>
 
             {deadline.weekId && (
-                <Link to={`/week/${deadline.weekId}`} className="btn-primary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', textDecoration: 'none' }}>
+                <Link
+                    to={`/week/${deadline.weekId}`}
+                    className="btn-primary"
+                    style={{ padding: '0.4rem 0.85rem', fontSize: '0.82rem', textDecoration: 'none', whiteSpace: 'nowrap' }}
+                >
                     View Answers
                 </Link>
             )}

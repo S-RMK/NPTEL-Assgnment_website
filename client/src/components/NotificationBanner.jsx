@@ -50,7 +50,7 @@ const NotificationBanner = () => {
 
     function urlBase64ToUint8Array(base64String) {
         const padding = '='.repeat((4 - base64String.length % 4) % 4);
-        const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
         const rawData = window.atob(base64);
         const outputArray = new Uint8Array(rawData.length);
         for (let i = 0; i < rawData.length; ++i) {
@@ -62,32 +62,29 @@ const NotificationBanner = () => {
     if (permissionStatus === 'granted' || isSubscribed) return null;
 
     return (
-        <div className="glass-panel" style={{
-            padding: '1rem',
-            marginBottom: '1.5rem',
+        <div className="glass-panel banner-row" style={{
+            padding: '0.9rem 1rem',
+            marginBottom: '1.25rem',
             borderRadius: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
             borderLeft: '4px solid #6366f1'
         }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <Bell size={22} color="#818cf8" />
-                <div>
-                    <strong style={{ fontSize: '0.95rem' }}>Enable Deadline Alerts</strong>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--clr-text-muted)', margin: 0 }}>
-                        Get notified when answers are released or deadlines approach.
-                    </p>
+            <div className="banner-copy">
+                <Bell size={20} color="#818cf8" style={{ flexShrink: 0 }} />
+                <div style={{ minWidth: 0 }}>
+                    <strong>Enable Deadline Alerts</strong>
+                    <span>Get notified when answers are released or deadlines approach.</span>
                 </div>
             </div>
-            <button
-                onClick={subscribeToPush}
-                disabled={loading}
-                className="btn-primary"
-                style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}
-            >
-                {loading ? 'Subscribing...' : 'Enable'}
-            </button>
+            <div className="banner-actions">
+                <button
+                    onClick={subscribeToPush}
+                    disabled={loading}
+                    className="btn-primary"
+                    style={{ padding: '0.42rem 0.95rem', fontSize: '0.84rem' }}
+                >
+                    {loading ? 'Subscribing…' : 'Enable'}
+                </button>
+            </div>
         </div>
     );
 };

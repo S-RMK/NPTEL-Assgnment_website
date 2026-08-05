@@ -1,13 +1,13 @@
 import { db } from './firebase';
+// Reads go straight to Firestore (fast, and works while the API is cold); every write
+// goes through the Express API, which authenticates and role-checks it. Firestore rules
+// deny client writes outright, so there is no direct-write path left to fall back on.
 import {
     collection,
-    addDoc,
     getDocs,
     query,
     where,
-    orderBy,
-    deleteDoc,
-    doc
+    orderBy
 } from 'firebase/firestore';
 
 const API_BASE = '/api';
@@ -81,7 +81,7 @@ export const api = {
             headers: getAuthHeaders(),
             body: JSON.stringify({ selectedCourses })
         });
-        return res.json();
+        return readJson(res, 'Saving your courses');
     },
 
     // --- Personalised Dashboard ---
@@ -112,7 +112,12 @@ export const api = {
     // --- Polls ---
     getActivePolls: async () => {
         const res = await fetch(`${API_BASE}/polls/active`);
-        return res.json();
+        return readJson(res, 'Loading polls');
+    },
+
+    getDeadlines: async () => {
+        const res = await fetch(`${API_BASE}/deadlines`);
+        return readJson(res, 'Loading deadlines');
     },
 
     votePoll: async (pollId, optionId) => {
@@ -209,25 +214,20 @@ export const api = {
     },
 
     addCourse: async (course) => {
-        try {
-            const docRef = await addDoc(collection(db, 'courses'), course);
-            return { id: docRef.id, ...course };
-        } catch (e) {
-            const res = await fetch(`${API_BASE}/courses`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(course)
-            });
-            return res.json();
-        }
+        const res = await fetch(`${API_BASE}/courses`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(course)
+        });
+        return readJson(res, 'Creating the course');
     },
 
     deleteCourse: async (id) => {
-        try {
-            await deleteDoc(doc(db, 'courses', id));
-        } catch (e) {
-            await fetch(`${API_BASE}/courses/${id}`, { method: 'DELETE' });
-        }
+        const res = await fetch(`${API_BASE}/courses/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        return readJson(res, 'Deleting the course');
     },
 
     // --- Weeks ---
@@ -251,7 +251,7 @@ export const api = {
                 weeks = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             }
             if (weeks.length > 0) return weeks;
-        } catch (e) {
+        } catch {
             console.warn('Firestore weeks fetch fallback');
         }
         const res = await fetch(`${API_BASE}/courses/${courseId}/weeks`);
@@ -264,25 +264,20 @@ export const api = {
             courseId: String(courseId),
             number: Number(week.number)
         };
-        try {
-            const docRef = await addDoc(collection(db, 'weeks'), newWeek);
-            return { id: docRef.id, ...newWeek };
-        } catch (e) {
-            const res = await fetch(`${API_BASE}/courses/${courseId}/weeks`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newWeek)
-            });
-            return res.json();
-        }
+        const res = await fetch(`${API_BASE}/courses/${courseId}/weeks`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(newWeek)
+        });
+        return readJson(res, 'Publishing the week');
     },
 
     deleteWeek: async (id) => {
-        try {
-            await deleteDoc(doc(db, 'weeks', id));
-        } catch (e) {
-            await fetch(`${API_BASE}/weeks/${id}`, { method: 'DELETE' });
-        }
+        const res = await fetch(`${API_BASE}/weeks/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        return readJson(res, 'Deleting the week');
     },
 
     // --- Answers ---
@@ -306,7 +301,7 @@ export const api = {
                 answers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             }
             if (answers.length > 0) return answers;
-        } catch (e) {
+        } catch {
             console.warn('Firestore answers fetch fallback');
         }
         const res = await fetch(`${API_BASE}/weeks/${weekId}/answers`);
@@ -319,24 +314,19 @@ export const api = {
             weekId: String(weekId),
             questionNo: Number(answer.questionNo)
         };
-        try {
-            const docRef = await addDoc(collection(db, 'answers'), newAnswer);
-            return { id: docRef.id, ...newAnswer };
-        } catch (e) {
-            const res = await fetch(`${API_BASE}/weeks/${weekId}/answers`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newAnswer)
-            });
-            return res.json();
-        }
+        const res = await fetch(`${API_BASE}/weeks/${weekId}/answers`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(newAnswer)
+        });
+        return readJson(res, 'Saving the answer');
     },
 
     deleteAnswer: async (id) => {
-        try {
-            await deleteDoc(doc(db, 'answers', id));
-        } catch (e) {
-            await fetch(`${API_BASE}/answers/${id}`, { method: 'DELETE' });
-        }
+        const res = await fetch(`${API_BASE}/answers/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        return readJson(res, 'Deleting the answer');
     }
 };

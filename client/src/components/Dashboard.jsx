@@ -5,6 +5,7 @@ import DeadlineCard from './DeadlineCard';
 import PollCard from './PollCard';
 import AnnouncementCard from './AnnouncementCard';
 import NotificationBanner from './NotificationBanner';
+import Spinner from './Spinner';
 import { BookOpen, Calendar, Vote, Bell, Sparkles, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -47,28 +48,38 @@ const Dashboard = () => {
         <div style={{ paddingBottom: '3rem' }}>
             {/* Header Greeting */}
             <div className="glass-panel" style={{
-                padding: '1.5rem',
-                borderRadius: '20px',
-                marginBottom: '1.5rem',
+                padding: '1.25rem',
+                borderRadius: '18px',
+                marginBottom: '1.25rem',
                 background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.2) 0%, rgba(147, 51, 234, 0.15) 100%)',
                 border: '1px solid rgba(255,255,255,0.1)'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#a78bfa', fontSize: '0.85rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>
-                    <Sparkles size={16} />
-                    <span>PWA Educational Dashboard</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#a78bfa', fontSize: '0.78rem', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.3rem' }}>
+                    <Sparkles size={15} />
+                    <span>Your dashboard</span>
                 </div>
-                <h2 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700 }}>
-                    Welcome back, {user ? user.displayName : 'Student'}! 👋
+                <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700, overflowWrap: 'anywhere' }}>
+                    {user ? `Welcome back, ${user.displayName || user.username}!` : 'Welcome to NPTEL Answers'} 👋
                 </h2>
-                <p style={{ margin: '0.4rem 0 0 0', color: 'var(--clr-text-muted)', fontSize: '0.9rem' }}>
-                    {user && user.selectedCourses && user.selectedCourses.length > 0
-                        ? `Personalized updates active for ${user.selectedCourses.length} selected courses.`
-                        : 'Select your enrolled courses in settings to get personalized updates.'}
+                <p style={{ margin: '0.4rem 0 0 0', color: 'var(--clr-text-muted)', fontSize: '0.86rem' }}>
+                    {!user ? (
+                        <>Sign in to personalise your deadlines, polls and alerts.</>
+                    ) : user.selectedCourses && user.selectedCourses.length > 0 ? (
+                        `Personalised for your ${user.selectedCourses.length} enrolled course${user.selectedCourses.length === 1 ? '' : 's'}.`
+                    ) : (
+                        <>Pick your courses in <Link to="/settings" style={{ color: '#a5b4fc' }}>Settings</Link> to personalise this page.</>
+                    )}
                 </p>
             </div>
 
             {/* Notification Opt-In Banner */}
             <NotificationBanner />
+
+            {loading && (
+                <div className="glass-panel" style={{ borderRadius: '16px', padding: '0.5rem' }}>
+                    <Spinner label="Loading your dashboard…" />
+                </div>
+            )}
 
             {/* Upcoming Deadlines Section */}
             {dashboardData.deadlines && dashboardData.deadlines.length > 0 && (

@@ -1,8 +1,36 @@
 rules_version = '2';
+
+// The previous ruleset was `allow read, write: if true` on `/{document=**}`, which made
+// the entire database world-readable and world-writable to anyone holding the Firebase
+// web config — and that config ships inside the public JS bundle. Password hashes,
+// audit logs and push endpoints were all exposed, and any visitor could delete content.
+//
+// Writes are now closed to every client. The Express server uses the Firebase Admin
+// SDK, which bypasses these rules entirely, so all mutations go through its
+// authenticated, role-checked routes.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
-    }
+
+    // Public course catalogue: readable without an account so students can browse,
+    // writable only by the server.
+    match /courses/{document}       { allow read: if true; allow write: if false; }
+    match /weeks/{document}         { allow read: if true; allow write: if false; }
+    match /answers/{document}       { allow read: if true; allow write: if false; }
+    match /deadlines/{document}     { allow read: if true; allow write: if false; }
+    match /announcements/{document} { allow read: if true; allow write: if false; }
+    match /polls/{document}         { allow read: if true; allow write: if false; }
+
+    // Never reachable from a browser:
+    //   users                      - contains bcrypt password hashes
+    //   audit_logs                 - admin activity trail
+    //   notification_subscriptions - push endpoints that could be used to spam devices
+    //   config                     - holds the VAPID private key
+    match /users/{document}                      { allow read, write: if false; }
+    match /audit_logs/{document}                 { allow read, write: if false; }
+    match /notification_subscriptions/{document} { allow read, write: if false; }
+    match /config/{document}                     { allow read, write: if false; }
+
+    // Deny anything not explicitly listed above.
+    match /{document=**} { allow read, write: if false; }
   }
 }

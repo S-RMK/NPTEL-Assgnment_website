@@ -31,38 +31,34 @@ const InstallPrompt = () => {
     if (!isVisible) return null;
 
     return (
-        <div className="glass-panel" style={{
+        <div className="glass-panel banner-row" style={{
             position: 'fixed',
-            bottom: '1.5rem',
+            // Clears the offline indicator and the iOS home indicator.
+            bottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))',
             left: '50%',
             transform: 'translateX(-50%)',
-            width: '90%',
-            maxWidth: '480px',
-            padding: '1rem 1.25rem',
+            width: 'min(92%, 480px)',
+            padding: '0.85rem 1rem',
             zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '1rem',
             border: '1px solid var(--clr-primary)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
             borderRadius: '16px'
         }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <div style={{ padding: '0.5rem', background: 'var(--grad-main)', borderRadius: '10px' }}>
-                    <Download size={20} color="white" />
+            <div className="banner-copy">
+                <div style={{ padding: '0.45rem', background: 'var(--grad-main)', borderRadius: '10px', flexShrink: 0, display: 'flex' }}>
+                    <Download size={18} color="white" />
                 </div>
-                <div>
-                    <strong style={{ fontSize: '0.95rem', display: 'block' }}>Install NPTEL App</strong>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--clr-text-muted)' }}>Fast offline access & push notifications</span>
+                <div style={{ minWidth: 0 }}>
+                    <strong>Install NPTEL App</strong>
+                    <span>Fast offline access &amp; push notifications</span>
                 </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <button onClick={handleInstallClick} className="btn-primary" style={{ padding: '0.4rem 0.9rem', fontSize: '0.85rem' }}>
+            <div className="banner-actions">
+                <button onClick={handleInstallClick} className="btn-primary" style={{ padding: '0.42rem 0.95rem', fontSize: '0.84rem' }}>
                     Install
                 </button>
-                <button onClick={() => setIsVisible(false)} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}>
-                    <X size={18} />
+                <button onClick={() => setIsVisible(false)} aria-label="Dismiss install prompt" style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', display: 'flex' }}>
+                    <X size={17} />
                 </button>
             </div>
         </div>

@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const db = require('./db');
 const { generateToken, verifyToken, optionalAuth, requireRole } = require('./authMiddleware');
-const { vapidPublicKey, saveSubscription, sendPushNotification } = require('./pushService');
+const { getVapidPublicKey, saveSubscription, sendPushNotification } = require('./pushService');
 const { logAudit } = require('./auditLogger');
 
 // Helper to query Firestore collections with in-memory sorting fallback
@@ -236,8 +236,12 @@ router.patch('/users/:id', verifyToken, requireRole('ADMIN'), async (req, res) =
 // ==========================================
 
 // GET /api/push/vapid-key
-router.get('/push/vapid-key', (req, res) => {
-    res.json({ publicKey: vapidPublicKey });
+router.get('/push/vapid-key', async (req, res) => {
+    try {
+        res.json({ publicKey: await getVapidPublicKey() });
+    } catch (err) {
+        res.status(503).json({ error: err.message });
+    }
 });
 
 // POST /api/subscriptions
@@ -289,22 +293,37 @@ router.get('/dashboard', optionalAuth, async (req, res) => {
         // Fetch Courses
         const courses = await getCollection('courses', null, null, 'title');
 
+        // A record targeted at 'all' (or with no course) is relevant to everyone;
+        // otherwise it must match one of the student's enrolled courses. Students who
+        // have picked nothing yet see everything rather than an empty dashboard.
+        const personalised = userCourses.length > 0 && !userCourses.includes('all');
+        const relevant = (item) =>
+            !personalised || !item.courseId || item.courseId === 'all' || userCourses.includes(item.courseId);
+
         // Fetch Deadlines
         const deadlinesSnapshot = await db.collection('deadlines').get();
-        let deadlines = deadlinesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let deadlines = deadlinesSnapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(relevant)
+            // Drop deadlines that expired over a day ago; keep just-passed ones briefly so
+            // a student who missed one still sees it. Soonest first.
+            .filter(d => {
+                const due = new Date(d.dueDate).getTime();
+                return !Number.isNaN(due) && due > Date.now() - 24 * 60 * 60 * 1000;
+            })
+            .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
 
-        // Filter deadlines by user courses if user has preferences
-        if (userCourses.length > 0 && !userCourses.includes('all')) {
-            deadlines = deadlines.filter(d => !d.courseId || userCourses.includes(d.courseId));
-        }
-
-        // Fetch Active Polls
+        // Fetch Active Polls — previously returned to everyone regardless of course.
         const pollsSnapshot = await db.collection('polls').where('isActive', '==', true).get();
-        let polls = pollsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let polls = pollsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(relevant);
 
-        // Fetch Announcements
+        // Fetch Announcements — pinned first, then newest.
         const announcementsSnapshot = await db.collection('announcements').get();
-        let announcements = announcementsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let announcements = announcementsSnapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(relevant)
+            .sort((a, b) => (Number(b.isPinned) - Number(a.isPinned))
+                || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
         // Fetch Recent Weeks / Answers
         const recentWeeksSnapshot = await db.collection('weeks').limit(5).get();
@@ -429,12 +448,19 @@ router.post('/admin/deadlines', verifyToken, requireRole('ADMIN'), async (req, r
         return res.status(400).json({ error: 'Title and dueDate are required' });
     }
 
+    // A datetime-local input submits "2026-08-10T14:30" with no timezone, which different
+    // clients interpret differently. Normalise to ISO/UTC once, at write time.
+    const parsedDue = new Date(dueDate);
+    if (Number.isNaN(parsedDue.getTime())) {
+        return res.status(400).json({ error: `Could not understand the due date: "${dueDate}"` });
+    }
+
     try {
         const newDeadline = {
             title,
             courseId: courseId || 'all',
             weekId: weekId || '',
-            dueDate,
+            dueDate: parsedDue.toISOString(),
             reminderSent: { '24h': false, '12h': false, '1h': false },
             createdAt: new Date().toISOString()
         };
@@ -532,10 +558,14 @@ router.get('/courses', async (req, res) => {
     }
 });
 
-router.post('/courses', async (req, res) => {
+router.post('/courses', verifyToken, requireRole('ADMIN'), async (req, res) => {
     const { title, code } = req.body;
+    if (!title || !String(title).trim()) {
+        return res.status(400).json({ error: 'Course title is required' });
+    }
     try {
-        const docRef = await db.collection('courses').add({ title, code });
+        const docRef = await db.collection('courses').add({ title: String(title).trim(), code: code || 'NEW' });
+        await logAudit({ actorId: req.user.id, actorRole: req.user.role, action: 'COURSE_CREATED', details: `Created course "${title}"` });
         res.status(201).json({ id: docRef.id, title, code });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -555,7 +585,7 @@ router.get('/courses/:courseId/weeks', async (req, res) => {
     }
 });
 
-router.post('/courses/:courseId/weeks', async (req, res) => {
+router.post('/courses/:courseId/weeks', verifyToken, requireRole('ADMIN'), async (req, res) => {
     const { courseId } = req.params;
     const { title, number } = req.body;
     try {
@@ -580,7 +610,7 @@ router.post('/courses/:courseId/weeks', async (req, res) => {
                 targetUrl: `/week/${docRef.id}`,
                 courseId: courseId
             });
-            logAudit({ actorId: 'ADMIN', actorRole: 'ADMIN', action: 'WEEK_PUBLISHED', details: `Published ${weekName} for course ${courseId}` });
+            logAudit({ actorId: req.user.id, actorRole: req.user.role, action: 'WEEK_PUBLISHED', details: `Published ${weekName} for course ${courseId}` });
         } catch (pushErr) {
             console.warn('Auto push notification warning:', pushErr.message);
         }
@@ -604,49 +634,69 @@ router.get('/weeks/:weekId/answers', async (req, res) => {
     }
 });
 
-router.post('/weeks/:weekId/answers', async (req, res) => {
+router.post('/weeks/:weekId/answers', verifyToken, requireRole('ADMIN'), async (req, res) => {
     const { weekId } = req.params;
     const { questionNo, text } = req.body;
+    if (!text || !String(text).trim()) {
+        return res.status(400).json({ error: 'Answer text is required' });
+    }
     try {
         const docRef = await db.collection('answers').add({
             weekId: weekId,
             questionNo: Number(questionNo),
             text
         });
+        await logAudit({ actorId: req.user.id, actorRole: req.user.role, action: 'ANSWER_ADDED', details: `Added answer Q${questionNo} to week ${weekId}` });
         res.status(201).json({ id: docRef.id, weekId, questionNo, text });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-const deleteRecursive = async (collection, id) => {
-    await db.collection(collection).doc(id).delete();
+// Deleting a parent leaves its children unreachable but still stored, so remove them
+// too. Despite its name the previous helper only deleted the single document.
+const deleteWhere = async (collection, field, value) => {
+    const snapshot = await db.collection(collection).where(field, '==', value).get();
+    await Promise.all(snapshot.docs.map((doc) => doc.ref.delete()));
+    return snapshot.size;
 };
 
-router.delete('/courses/:id', async (req, res) => {
+router.delete('/courses/:id', verifyToken, requireRole('ADMIN'), async (req, res) => {
     const { id } = req.params;
     try {
-        await deleteRecursive('courses', id);
-        res.json({ message: 'Course deleted' });
+        const weeks = await db.collection('weeks').where('courseId', '==', id).get();
+        let answers = 0;
+        for (const week of weeks.docs) {
+            answers += await deleteWhere('answers', 'weekId', week.id);
+            await week.ref.delete();
+        }
+        await db.collection('courses').doc(id).delete();
+
+        await logAudit({ actorId: req.user.id, actorRole: req.user.role, action: 'COURSE_DELETED', details: `Deleted course ${id} (${weeks.size} weeks, ${answers} answers)` });
+        res.json({ message: 'Course deleted', weeksDeleted: weeks.size, answersDeleted: answers });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-router.delete('/weeks/:id', async (req, res) => {
+router.delete('/weeks/:id', verifyToken, requireRole('ADMIN'), async (req, res) => {
     const { id } = req.params;
     try {
-        await deleteRecursive('weeks', id);
-        res.json({ message: 'Week deleted' });
+        const answers = await deleteWhere('answers', 'weekId', id);
+        await db.collection('weeks').doc(id).delete();
+
+        await logAudit({ actorId: req.user.id, actorRole: req.user.role, action: 'WEEK_DELETED', details: `Deleted week ${id} (${answers} answers)` });
+        res.json({ message: 'Week deleted', answersDeleted: answers });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-router.delete('/answers/:id', async (req, res) => {
+router.delete('/answers/:id', verifyToken, requireRole('ADMIN'), async (req, res) => {
     const { id } = req.params;
     try {
-        await deleteRecursive('answers', id);
+        await db.collection('answers').doc(id).delete();
+        await logAudit({ actorId: req.user.id, actorRole: req.user.role, action: 'ANSWER_DELETED', details: `Deleted answer ${id}` });
         res.json({ message: 'Answer deleted' });
     } catch (err) {
         res.status(500).json({ error: err.message });

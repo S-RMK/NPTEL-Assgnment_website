@@ -3,11 +3,14 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import {
     LayoutDashboard, Users, Bell, Vote, Calendar, Megaphone, ShieldAlert,
-    Plus, Send, RefreshCw, CheckCircle, Search, UserCheck, UserX
+    Send, UserCheck, UserX
 } from 'lucide-react';
+import PollCard from '../components/PollCard';
+import DeadlineCard from '../components/DeadlineCard';
+import Spinner from '../components/Spinner';
 
 const AdminDashboard = () => {
-    const { isAdmin, user } = useAuth();
+    const { isAdmin } = useAuth();
     const [activeTab, setActiveTab] = useState('overview');
 
     // Metrics & Data States
@@ -15,6 +18,9 @@ const AdminDashboard = () => {
     const [usersList, setUsersList] = useState([]);
     const [courses, setCourses] = useState([]);
     const [auditLogs, setAuditLogs] = useState([]);
+    const [polls, setPolls] = useState([]);
+    const [deadlines, setDeadlines] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     // Push Form State
     const [pushData, setPushData] = useState({ title: '', body: '', targetUrl: '/', courseId: 'all' });
@@ -35,28 +41,38 @@ const AdminDashboard = () => {
     const [annContent, setAnnContent] = useState('');
     const [annPinned, setAnnPinned] = useState(false);
 
-    useEffect(() => {
-        if (isAdmin) {
-            loadAdminData();
-        }
-    }, [isAdmin]);
-
     const loadAdminData = async () => {
+        setLoading(true);
         try {
-            const [analyticsRes, usersRes, coursesRes, logsRes] = await Promise.all([
-                api.getAdminAnalytics(),
-                api.getAdminUsers(),
-                api.getCourses(),
-                api.getAuditLogs()
-            ]);
-            setAnalytics(analyticsRes || {});
-            setUsersList(usersRes || []);
-            setCourses(coursesRes || []);
-            setAuditLogs(logsRes || []);
+            // allSettled: one failing endpoint (e.g. audit logs) shouldn't blank the
+            // whole portal, which is what Promise.all did.
+            const [analyticsRes, usersRes, coursesRes, logsRes, pollsRes, deadlinesRes] =
+                await Promise.allSettled([
+                    api.getAdminAnalytics(),
+                    api.getAdminUsers(),
+                    api.getCourses(),
+                    api.getAuditLogs(),
+                    api.getActivePolls(),
+                    api.getDeadlines()
+                ]);
+            const value = (r, fallback) => (r.status === 'fulfilled' && r.value ? r.value : fallback);
+
+            setAnalytics(value(analyticsRes, {}));
+            setUsersList(value(usersRes, []));
+            setCourses(value(coursesRes, []));
+            setAuditLogs(value(logsRes, []));
+            setPolls(value(pollsRes, []));
+            setDeadlines(value(deadlinesRes, []));
         } catch (err) {
             console.error('Failed to load admin data:', err);
+        } finally {
+            setLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (isAdmin) loadAdminData();
+    }, [isAdmin]);
 
     const handleSendPush = async (e) => {
         e.preventDefault();
@@ -139,15 +155,15 @@ const AdminDashboard = () => {
     }
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '1.5rem', marginTop: '1rem' }}>
+        <div className="admin-layout" style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '1.25rem', marginTop: '0.5rem', paddingBottom: '3rem' }}>
             {/* Admin Sidebar Navigation */}
-            <div className="glass-panel" style={{ padding: '1rem', borderRadius: '20px', height: 'fit-content' }}>
+            <div className="glass-panel admin-sidebar" style={{ padding: '1rem', borderRadius: '20px', height: 'fit-content' }}>
                 <div style={{ padding: '0.5rem 0.75rem', marginBottom: '1rem' }}>
                     <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--clr-text-muted)', fontWeight: 700 }}>Admin Portal</span>
                     <h3 style={{ margin: '0.2rem 0 0 0', fontSize: '1.1rem' }}>Control Center</h3>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <div className="admin-tabs" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     {[
                         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
                         { id: 'users', label: 'User Management', icon: Users },
@@ -302,8 +318,79 @@ const AdminDashboard = () => {
                     </div>
                 )}
 
+                {/* Push Notifications Tab.
+                    The sidebar has always listed this tab, but no matching block existed,
+                    so selecting it rendered an empty page — which read as "push is broken". */}
+                {activeTab === 'notifications' && (
+                    <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '20px' }}>
+                        <h3 style={{ margin: '0 0 0.35rem 0' }}>Web Push Dispatcher</h3>
+                        <p style={{ margin: '0 0 1.25rem', fontSize: '0.85rem', color: 'var(--clr-text-muted)' }}>
+                            Sends to devices that enabled alerts. Students only receive a course-targeted
+                            message if they subscribed to that course.
+                        </p>
+                        <form onSubmit={handleSendPush}>
+                            <div className="admin-form-row">
+                                <div>
+                                    <label style={{ fontSize: '0.85rem', color: 'var(--clr-text-muted)' }}>Title</label>
+                                    <input
+                                        type="text"
+                                        value={pushData.title}
+                                        onChange={e => setPushData({ ...pushData, title: e.target.value })}
+                                        placeholder="e.g. Week 4 Answers Uploaded!"
+                                        required
+                                        style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: 'var(--clr-bg-card)', border: '1px solid var(--clr-border)', color: 'white' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '0.85rem', color: 'var(--clr-text-muted)' }}>Target Course</label>
+                                    <select
+                                        value={pushData.courseId}
+                                        onChange={e => setPushData({ ...pushData, courseId: e.target.value })}
+                                        style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: 'var(--clr-bg-card)', border: '1px solid var(--clr-border)', color: 'white' }}
+                                    >
+                                        <option value="all">All Subscribers</option>
+                                        {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ fontSize: '0.85rem', color: 'var(--clr-text-muted)' }}>Message Body</label>
+                                <textarea
+                                    value={pushData.body}
+                                    onChange={e => setPushData({ ...pushData, body: e.target.value })}
+                                    placeholder="Enter push notification text body..."
+                                    required
+                                    rows={3}
+                                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: 'var(--clr-bg-card)', border: '1px solid var(--clr-border)', color: 'white', fontFamily: 'inherit' }}
+                                />
+                            </div>
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ fontSize: '0.85rem', color: 'var(--clr-text-muted)' }}>Link opened on tap</label>
+                                <input
+                                    type="text"
+                                    value={pushData.targetUrl}
+                                    onChange={e => setPushData({ ...pushData, targetUrl: e.target.value })}
+                                    placeholder="/"
+                                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: 'var(--clr-bg-card)', border: '1px solid var(--clr-border)', color: 'white' }}
+                                />
+                            </div>
+                            <button type="submit" disabled={pushSending} className="btn-primary" style={{ padding: '0.65rem 1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <Send size={16} />
+                                {pushSending ? 'Dispatching…' : 'Dispatch Web Push'}
+                            </button>
+                        </form>
+
+                        <p style={{ marginTop: '1.25rem', fontSize: '0.8rem', color: 'var(--clr-text-muted)' }}>
+                            Subscribed devices: <strong style={{ color: '#fbbf24' }}>{analytics.totalPushSubscribers || 0}</strong>.
+                            {!analytics.totalPushSubscribers &&
+                                ' Nobody has enabled alerts yet, so a dispatch will reach 0 devices.'}
+                        </p>
+                    </div>
+                )}
+
                 {/* Polls Tab */}
                 {activeTab === 'polls' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                     <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '20px' }}>
                         <h3 style={{ margin: '0 0 1rem 0' }}>Create Community Poll</h3>
                         <form onSubmit={handleCreatePoll}>
@@ -317,6 +404,20 @@ const AdminDashboard = () => {
                                     required
                                     style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: 'var(--clr-bg-card)', border: '1px solid var(--clr-border)', color: 'white' }}
                                 />
+                            </div>
+
+                            {/* The course target was held in state but had no control, so
+                                every poll went out as "all" and could not be scoped. */}
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label style={{ fontSize: '0.85rem', color: 'var(--clr-text-muted)' }}>Course Target</label>
+                                <select
+                                    value={pollCourseId}
+                                    onChange={e => setPollCourseId(e.target.value)}
+                                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: 'var(--clr-bg-card)', border: '1px solid var(--clr-border)', color: 'white' }}
+                                >
+                                    <option value="all">All Students</option>
+                                    {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                                </select>
                             </div>
 
                             <div style={{ marginBottom: '1rem' }}>
@@ -347,10 +448,27 @@ const AdminDashboard = () => {
                             <button type="submit" className="btn-primary" style={{ padding: '0.65rem 1.5rem' }}>Publish Poll</button>
                         </form>
                     </div>
+
+                    {/* Live results. Previously an admin could publish polls but had no
+                        way to read them back — PollCard hid tallies until you voted. */}
+                    <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '20px' }}>
+                        <h3 style={{ margin: '0 0 1rem 0' }}>Live Poll Results ({polls.length})</h3>
+                        {loading ? (
+                            <Spinner label="Loading polls…" compact />
+                        ) : polls.length === 0 ? (
+                            <p style={{ color: 'var(--clr-text-muted)', fontSize: '0.9rem', margin: 0 }}>
+                                No active polls yet. Publish one above and results will appear here.
+                            </p>
+                        ) : (
+                            polls.map((poll) => <PollCard key={poll.id} poll={poll} forceResults />)
+                        )}
+                    </div>
+                    </div>
                 )}
 
                 {/* Deadlines Tab */}
                 {activeTab === 'deadlines' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                     <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '20px' }}>
                         <h3 style={{ margin: '0 0 1rem 0' }}>Schedule Course Deadline</h3>
                         <form onSubmit={handleCreateDeadline}>
@@ -392,6 +510,24 @@ const AdminDashboard = () => {
 
                             <button type="submit" className="btn-primary" style={{ padding: '0.65rem 1.5rem' }}>Set Deadline</button>
                         </form>
+                    </div>
+
+                    {/* Scheduled deadlines were write-only: nothing in the portal listed
+                        what had already been set, so mistakes were invisible. */}
+                    <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '20px' }}>
+                        <h3 style={{ margin: '0 0 1rem 0' }}>Scheduled Deadlines ({deadlines.length})</h3>
+                        {loading ? (
+                            <Spinner label="Loading deadlines…" compact />
+                        ) : deadlines.length === 0 ? (
+                            <p style={{ color: 'var(--clr-text-muted)', fontSize: '0.9rem', margin: 0 }}>
+                                No deadlines scheduled yet.
+                            </p>
+                        ) : (
+                            [...deadlines]
+                                .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+                                .map((d) => <DeadlineCard key={d.id} deadline={d} />)
+                        )}
+                    </div>
                     </div>
                 )}
 

@@ -7,24 +7,20 @@ export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        checkCurrentAuth();
-    }, []);
-
     const checkCurrentAuth = async () => {
         try {
-            const me = await api.getMe();
-            if (me) {
-                setUser(me);
-            } else {
-                setUser(null);
-            }
-        } catch (err) {
+            setUser((await api.getMe()) || null);
+        } catch {
             setUser(null);
         } finally {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        checkCurrentAuth();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const login = async (username, password) => {
         const data = await api.login({ username, password });

@@ -15,18 +15,19 @@ const Register = () => {
     const { register } = useAuth();
     const navigate = useNavigate();
 
-    useEffect(() => {
-        loadCourses();
-    }, []);
-
     const loadCourses = async () => {
         try {
             const data = await api.getCourses();
-            setAvailableCourses(data);
+            setAvailableCourses(Array.isArray(data) ? data : []);
         } catch (e) {
             console.error('Failed to load courses for registration:', e);
         }
     };
+
+    useEffect(() => {
+        loadCourses();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const toggleCourseSelection = (courseId) => {
         setSelectedCourses(prev =>

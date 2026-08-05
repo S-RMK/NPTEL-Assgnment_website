@@ -76,20 +76,43 @@ body {
     border-color: var(--clr-primary);
 }
 
-/* Responsive Mobile Layout Fixes */
+/* Responsive Mobile Layout Fixes.
+   The navbar rule that used to live here is gone: the navbar now owns its own
+   responsive behaviour in components.css rather than being patched with !important. */
 @media (max-width: 768px) {
     .container {
-        width: 95%;
-        padding-block: 0.75rem;
-    }
-
-    nav.glass-panel {
-        padding: 0.75rem 1rem !important;
-        flex-wrap: wrap;
-        gap: 0.75rem;
+        width: 92%;
+        padding-block: 1rem;
     }
 
     .card-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* The admin portal is a fixed two-column grid; stack it and let the tab list scroll
+   horizontally instead of squeezing a 240px sidebar onto a phone. */
+@media (max-width: 900px) {
+    .admin-layout {
         grid-template-columns: 1fr !important;
+    }
+
+    .admin-sidebar {
+        position: static !important;
+    }
+
+    .admin-tabs {
+        flex-direction: row !important;
+        overflow-x: auto;
+        gap: 0.4rem;
+        padding-bottom: 0.25rem;
+        scrollbar-width: none;
+    }
+
+    .admin-tabs::-webkit-scrollbar { display: none; }
+
+    .admin-tabs button {
+        white-space: nowrap;
+        flex-shrink: 0;
     }
 }
