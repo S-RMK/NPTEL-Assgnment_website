@@ -46,10 +46,18 @@ self.addEventListener('activate', (event) => {
     })());
 });
 
-// Lets the in-app "update available" prompt activate the new worker immediately.
 self.addEventListener('message', (event) => {
+    // Lets the in-app "update available" prompt activate the new worker immediately.
     if (event.data === 'SKIP_WAITING' || (event.data && event.data.type === 'SKIP_WAITING')) {
         self.skipWaiting();
+    }
+
+    // Sent on logout. Nothing account-specific should be cached, but a stale shell can
+    // still hold a rendered username, so clear everything and let it re-fetch.
+    if (event.data === 'CLEAR_CACHES' || (event.data && event.data.type === 'CLEAR_CACHES')) {
+        event.waitUntil(
+            caches.keys().then((names) => Promise.all(names.map((n) => caches.delete(n))))
+        );
     }
 });
 
@@ -106,18 +114,18 @@ async function cacheFirst(request) {
     return response;
 }
 
-// Fresh data when online; last-known-good when not.
-async function networkFirst(request) {
-    const cache = await caches.open(CACHE);
+/*
+ * API responses are per-account: they contain only the courses, deadlines and polls the
+ * signed-in student is entitled to. Caching them would hand the next person to use the
+ * device the previous account's data, so nothing from /api/* is ever written to the
+ * cache. The cost is that API data is unavailable offline; correctness wins.
+ */
+async function apiPassThrough(request) {
     try {
-        const response = await fetch(request);
-        if (response && response.ok) cache.put(request, response.clone());
-        return response;
+        return await fetch(request);
     } catch (err) {
-        const hit = await cache.match(request);
-        if (hit) return hit;
         return new Response(
-            JSON.stringify({ error: 'You are offline. This data is not cached yet.', offline: true }),
+            JSON.stringify({ error: 'You are offline. Reconnect to load your latest data.', offline: true }),
             { status: 503, headers: { 'Content-Type': 'application/json' } }
         );
     }
@@ -151,7 +159,7 @@ self.addEventListener('fetch', (event) => {
         return;
     }
     if (url.pathname.startsWith('/api/')) {
-        event.respondWith(networkFirst(request));
+        event.respondWith(apiPassThrough(request));
         return;
     }
     if (url.pathname.startsWith('/assets/')) {

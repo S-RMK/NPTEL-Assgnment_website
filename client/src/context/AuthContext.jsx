@@ -37,6 +37,8 @@ export const AuthProvider = ({ children }) => {
     const logout = () => {
         api.logout();
         setUser(null);
+        // Drop any cached shell so the next account on this device starts clean.
+        navigator.serviceWorker?.controller?.postMessage('CLEAR_CACHES');
     };
 
     const updatePreferences = async (selectedCourses) => {

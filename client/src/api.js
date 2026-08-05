@@ -1,15 +1,10 @@
-import { db } from './firebase';
-// Reads go straight to Firestore (fast, and works while the API is cold); every write
-// goes through the Express API, which authenticates and role-checks it. Firestore rules
-// deny client writes outright, so there is no direct-write path left to fall back on.
-import {
-    collection,
-    getDocs,
-    query,
-    where,
-    orderBy
-} from 'firebase/firestore';
-
+/*
+ * Every request goes through the Express API, which authenticates the caller and
+ * enforces course enrolment. The browser no longer talks to Firestore directly: with
+ * rules denying all client access, hiding content in the UI alone would have left it
+ * one hand-written query away. Dropping the Firestore SDK also removes ~300 kB from
+ * the bundle.
+ */
 const API_BASE = '/api';
 
 const getAuthHeaders = () => {
@@ -111,12 +106,12 @@ export const api = {
 
     // --- Polls ---
     getActivePolls: async () => {
-        const res = await fetch(`${API_BASE}/polls/active`);
+        const res = await fetch(`${API_BASE}/polls/active`, { headers: getAuthHeaders() });
         return readJson(res, 'Loading polls');
     },
 
     getDeadlines: async () => {
-        const res = await fetch(`${API_BASE}/deadlines`);
+        const res = await fetch(`${API_BASE}/deadlines`, { headers: getAuthHeaders() });
         return readJson(res, 'Loading deadlines');
     },
 
@@ -126,7 +121,29 @@ export const api = {
             headers: getAuthHeaders(),
             body: JSON.stringify({ optionId })
         });
-        return res.json();
+        return readJson(res, 'Submitting your vote');
+    },
+
+    // --- Admin: poll management ---
+    getPollResponses: async (pollId) => {
+        const res = await fetch(`${API_BASE}/admin/polls/${pollId}/responses`, { headers: getAuthHeaders() });
+        return readJson(res, 'Loading poll responses');
+    },
+
+    remindPollNonResponders: async (pollId) => {
+        const res = await fetch(`${API_BASE}/admin/polls/${pollId}/remind`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        return readJson(res, 'Sending reminders');
+    },
+
+    deletePoll: async (pollId) => {
+        const res = await fetch(`${API_BASE}/admin/polls/${pollId}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        return readJson(res, 'Deleting the poll');
     },
 
     // --- Admin APIs ---
@@ -198,19 +215,18 @@ export const api = {
         return res.json();
     },
 
-    // --- Courses (Direct Firestore & API fallback) ---
+    // --- Courses ---
+    // Returns only the signed-in user's enrolled courses (all of them, for an admin).
     getCourses: async () => {
-        try {
-            const q = query(collection(db, 'courses'), orderBy('title'));
-            const querySnapshot = await getDocs(q);
-            if (!querySnapshot.empty) {
-                return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            }
-        } catch (e) {
-            console.warn('Firestore direct fetch failed, falling back to express API:', e.message);
-        }
-        const res = await fetch(`${API_BASE}/courses`);
-        return res.json();
+        const res = await fetch(`${API_BASE}/courses`, { headers: getAuthHeaders() });
+        return readJson(res, 'Loading courses');
+    },
+
+    // Names only, and the one endpoint that works without a token — the registration
+    // form needs to offer course choices before an account exists.
+    getCourseCatalogue: async () => {
+        const res = await fetch(`${API_BASE}/courses/catalogue`);
+        return readJson(res, 'Loading the course list');
     },
 
     addCourse: async (course) => {
@@ -232,30 +248,8 @@ export const api = {
 
     // --- Weeks ---
     getWeeks: async (courseId) => {
-        try {
-            let q = query(
-                collection(db, 'weeks'),
-                where('courseId', '==', String(courseId)),
-                orderBy('number', 'asc')
-            );
-            let querySnapshot = await getDocs(q);
-            let weeks = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            if (weeks.length === 0 && !isNaN(courseId)) {
-                q = query(
-                    collection(db, 'weeks'),
-                    where('courseId', '==', Number(courseId)),
-                    orderBy('number', 'asc')
-                );
-                querySnapshot = await getDocs(q);
-                weeks = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            }
-            if (weeks.length > 0) return weeks;
-        } catch {
-            console.warn('Firestore weeks fetch fallback');
-        }
-        const res = await fetch(`${API_BASE}/courses/${courseId}/weeks`);
-        return res.json();
+        const res = await fetch(`${API_BASE}/courses/${courseId}/weeks`, { headers: getAuthHeaders() });
+        return readJson(res, 'Loading weeks');
     },
 
     addWeek: async (courseId, week) => {
@@ -282,30 +276,8 @@ export const api = {
 
     // --- Answers ---
     getAnswers: async (weekId) => {
-        try {
-            let q = query(
-                collection(db, 'answers'),
-                where('weekId', '==', String(weekId)),
-                orderBy('questionNo', 'asc')
-            );
-            let querySnapshot = await getDocs(q);
-            let answers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            if (answers.length === 0 && !isNaN(weekId)) {
-                q = query(
-                    collection(db, 'answers'),
-                    where('weekId', '==', Number(weekId)),
-                    orderBy('questionNo', 'asc')
-                );
-                querySnapshot = await getDocs(q);
-                answers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            }
-            if (answers.length > 0) return answers;
-        } catch {
-            console.warn('Firestore answers fetch fallback');
-        }
-        const res = await fetch(`${API_BASE}/weeks/${weekId}/answers`);
-        return res.json();
+        const res = await fetch(`${API_BASE}/weeks/${weekId}/answers`, { headers: getAuthHeaders() });
+        return readJson(res, 'Loading answers');
     },
 
     addAnswer: async (weekId, answer) => {

@@ -26,22 +26,22 @@ function App() {
         <Router>
           <Navbar />
           <main className="container">
+            {/* Login and register are the only routes that render signed out.
+                Everything else redirects to /login, and the API refuses the underlying
+                requests regardless, so the guard is convenience rather than the
+                security boundary. */}
             <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/courses" element={<Home />} />
-              <Route path="/course/:courseId" element={<Course />} />
-              <Route path="/week/:weekId" element={<Week />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
-              <Route
-                path="/settings"
-                element={<RequireAuth><Settings /></RequireAuth>}
-              />
-              <Route
-                path="/admin"
-                element={<RequireAdmin><AdminDashboard /></RequireAdmin>}
-              />
-              <Route path="*" element={<NotFound />} />
+
+              <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
+              <Route path="/courses" element={<RequireAuth><Home /></RequireAuth>} />
+              <Route path="/course/:courseId" element={<RequireAuth><Course /></RequireAuth>} />
+              <Route path="/week/:weekId" element={<RequireAuth><Week /></RequireAuth>} />
+              <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
+              <Route path="/admin" element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />
+
+              <Route path="*" element={<RequireAuth><NotFound /></RequireAuth>} />
             </Routes>
           </main>
           <InstallPrompt />

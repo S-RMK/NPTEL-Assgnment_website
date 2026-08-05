@@ -14,7 +14,6 @@ const Home = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
-    const [showAll, setShowAll] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [newCourseName, setNewCourseName] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -40,16 +39,14 @@ const Home = () => {
         loadCourses();
     }, []);
 
-    // Default to the courses the student actually takes; browsing everything is opt-in.
-    // Signed-out visitors and admins in edit mode always see the full catalogue.
+    // The server already returns only what this account may see — enrolled courses for a
+    // student, everything for an admin — so this filters by search text alone.
     const visible = useMemo(() => {
-        const bySearch = courses.filter((c) => {
-            const q = searchQuery.toLowerCase();
-            return (c.title || '').toLowerCase().includes(q) || (c.code || '').toLowerCase().includes(q);
-        });
-        if (!hasEnrolment || showAll || isEditMode) return bySearch;
-        return bySearch.filter((c) => enrolled.includes(c.id));
-    }, [courses, searchQuery, hasEnrolment, showAll, isEditMode, enrolled]);
+        const q = searchQuery.toLowerCase();
+        return courses.filter((c) =>
+            (c.title || '').toLowerCase().includes(q) || (c.code || '').toLowerCase().includes(q)
+        );
+    }, [courses, searchQuery]);
 
     const handleAddCourse = async (e) => {
         e.preventDefault();
@@ -83,14 +80,11 @@ const Home = () => {
         <div style={{ paddingBottom: '3rem' }}>
             <div className="page-head">
                 <h1 className="page-title">
-                    {hasEnrolment && !showAll ? 'My ' : 'All '}
-                    <span className="page-title-accent">Courses</span>
+                    My <span className="page-title-accent">Courses</span>
                 </h1>
-                {hasEnrolment && (
-                    <button className="chip-toggle" onClick={() => setShowAll((v) => !v)}>
-                        {showAll ? `Show my ${enrolled.length}` : 'Browse all courses'}
-                    </button>
-                )}
+                <Link to="/settings" className="chip-toggle" style={{ textDecoration: 'none' }}>
+                    Change my courses
+                </Link>
             </div>
 
             <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
@@ -122,22 +116,18 @@ const Home = () => {
             ) : visible.length === 0 ? (
                 <div className="empty-state">
                     <BookOpen size={34} color="#6366f1" />
-                    {courses.length === 0 ? (
-                        <p>No courses have been published yet.</p>
-                    ) : hasEnrolment && !showAll ? (
-                        <>
-                            <p>None of your enrolled courses match.</p>
-                            <button className="btn-primary" style={{ padding: '0.5rem 1.2rem' }} onClick={() => setShowAll(true)}>
-                                Browse all courses
-                            </button>
-                        </>
-                    ) : (
+                    {searchQuery ? (
                         <p>No courses match “{searchQuery}”.</p>
-                    )}
-                    {user && !hasEnrolment && (
-                        <Link to="/settings" className="nav-link" style={{ marginTop: '0.5rem' }}>
-                            <Settings size={16} /> Choose your courses
-                        </Link>
+                    ) : hasEnrolment ? (
+                        <p>Your enrolled courses haven't been published yet.</p>
+                    ) : (
+                        <>
+                            <p>You haven't chosen any courses yet.</p>
+                            <Link to="/settings" className="btn-primary" style={{ padding: '0.5rem 1.2rem', textDecoration: 'none' }}>
+                                <Settings size={15} style={{ verticalAlign: '-2px', marginRight: '0.35rem' }} />
+                                Choose your courses
+                            </Link>
+                        </>
                     )}
                 </div>
             ) : (

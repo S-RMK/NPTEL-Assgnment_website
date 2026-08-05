@@ -17,7 +17,9 @@ const Register = () => {
 
     const loadCourses = async () => {
         try {
-            const data = await api.getCourses();
+            // Names-only catalogue: the authenticated /courses endpoint needs a token
+            // that does not exist yet at registration time.
+            const data = await api.getCourseCatalogue();
             setAvailableCourses(Array.isArray(data) ? data : []);
         } catch (e) {
             console.error('Failed to load courses for registration:', e);

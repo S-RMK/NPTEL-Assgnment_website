@@ -17,7 +17,11 @@ const votedKey = (pollId) => `nptel_poll_voted_${pollId}`;
 const PollCard = ({ poll, forceResults = false }) => {
     const { isAdmin } = useAuth();
     const [selectedOption, setSelectedOption] = useState(null);
-    const [voted, setVoted] = useState(() => Boolean(localStorage.getItem(votedKey(poll.id))));
+    // `hasVoted` comes from the server, so a student sees their result on any device.
+    // The localStorage flag is only a fallback for the moment right after voting.
+    const [voted, setVoted] = useState(
+        () => Boolean(poll.hasVoted) || Boolean(localStorage.getItem(votedKey(poll.id)))
+    );
     const [options, setOptions] = useState(poll.options || []);
     const [totalVotes, setTotalVotes] = useState(
         poll.totalVotes ?? (poll.options || []).reduce((sum, o) => sum + (o.votes || 0), 0)

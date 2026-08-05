@@ -5,7 +5,7 @@ import {
     LayoutDashboard, Users, Bell, Vote, Calendar, Megaphone, ShieldAlert,
     Send, UserCheck, UserX
 } from 'lucide-react';
-import PollCard from '../components/PollCard';
+import PollAdminCard from '../components/PollAdminCard';
 import DeadlineCard from '../components/DeadlineCard';
 import Spinner from '../components/Spinner';
 
@@ -460,7 +460,13 @@ const AdminDashboard = () => {
                                 No active polls yet. Publish one above and results will appear here.
                             </p>
                         ) : (
-                            polls.map((poll) => <PollCard key={poll.id} poll={poll} forceResults />)
+                            polls.map((poll) => (
+                                <PollAdminCard
+                                    key={poll.id}
+                                    poll={poll}
+                                    onDeleted={(id) => setPolls((prev) => prev.filter((p) => p.id !== id))}
+                                />
+                            ))
                         )}
                     </div>
                     </div>

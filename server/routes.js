@@ -2,9 +2,33 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const db = require('./db');
-const { generateToken, verifyToken, optionalAuth, requireRole } = require('./authMiddleware');
+// optionalAuth is no longer imported: every content route now requires a real token.
+const { generateToken, verifyToken, requireRole } = require('./authMiddleware');
 const { getVapidPublicKey, saveSubscription, sendPushNotification } = require('./pushService');
 const { logAudit } = require('./auditLogger');
+
+/*
+ * Enrolment enforcement.
+ *
+ * Course content is private: a student may only read courses they are enrolled in,
+ * and the weeks and answers belonging to them. This is checked on the server for every
+ * read, because the browser no longer talks to Firestore directly — hiding items in the
+ * UI alone would leave the data one hand-crafted request away.
+ */
+const isAdminRole = (user) => Boolean(user) && (user.role === 'ADMIN' || user.role === 'SUPER_ADMIN');
+
+const enrolmentOf = async (user) => {
+    if (!user) return [];
+    const doc = await db.collection('users').doc(user.id).get();
+    return doc.exists ? (doc.data().selectedCourses || []) : [];
+};
+
+// Admins see everything. 'all' is the wildcard stored for admin/staff accounts.
+const mayAccessCourse = (enrolled, courseId, user) =>
+    isAdminRole(user) || enrolled.includes('all') || enrolled.includes(String(courseId));
+
+const denyCourse = (res) =>
+    res.status(403).json({ error: 'You are not enrolled in this course.' });
 
 // Helper to query Firestore collections with in-memory sorting fallback
 const getCollection = async (collectionName, field, value, orderByField, orderDir = 'asc') => {
@@ -236,7 +260,7 @@ router.patch('/users/:id', verifyToken, requireRole('ADMIN'), async (req, res) =
 // ==========================================
 
 // GET /api/push/vapid-key
-router.get('/push/vapid-key', async (req, res) => {
+router.get('/push/vapid-key', verifyToken, async (req, res) => {
     try {
         res.json({ publicKey: await getVapidPublicKey() });
     } catch (err) {
@@ -245,7 +269,7 @@ router.get('/push/vapid-key', async (req, res) => {
 });
 
 // POST /api/subscriptions
-router.post('/subscriptions', optionalAuth, async (req, res) => {
+router.post('/subscriptions', verifyToken, async (req, res) => {
     const { subscription, courseIds } = req.body;
     if (!subscription) {
         return res.status(400).json({ error: 'Subscription object is required' });
@@ -280,25 +304,19 @@ router.post('/admin/push/send', verifyToken, requireRole('ADMIN'), async (req, r
 // 4. PERSONALISED DASHBOARD API
 // ==========================================
 
-router.get('/dashboard', optionalAuth, async (req, res) => {
+router.get('/dashboard', verifyToken, async (req, res) => {
     try {
-        let userCourses = [];
-        if (req.user) {
-            const userDoc = await db.collection('users').doc(req.user.id).get();
-            if (userDoc.exists) {
-                userCourses = userDoc.data().selectedCourses || [];
-            }
-        }
+        const userCourses = await enrolmentOf(req.user);
 
-        // Fetch Courses
-        const courses = await getCollection('courses', null, null, 'title');
+        // Only the student's own courses. A student with no selections sees an empty
+        // dashboard that prompts them to choose — not everyone else's material.
+        const allCourses = await getCollection('courses', null, null, 'title');
+        const courses = allCourses.filter((c) => mayAccessCourse(userCourses, c.id, req.user));
 
-        // A record targeted at 'all' (or with no course) is relevant to everyone;
-        // otherwise it must match one of the student's enrolled courses. Students who
-        // have picked nothing yet see everything rather than an empty dashboard.
-        const personalised = userCourses.length > 0 && !userCourses.includes('all');
+        // A record targeted at 'all' (or with no course) reaches everyone; anything
+        // course-specific must match the student's enrolment.
         const relevant = (item) =>
-            !personalised || !item.courseId || item.courseId === 'all' || userCourses.includes(item.courseId);
+            !item.courseId || item.courseId === 'all' || mayAccessCourse(userCourses, item.courseId, req.user);
 
         // Fetch Deadlines
         const deadlinesSnapshot = await db.collection('deadlines').get();
@@ -346,17 +364,28 @@ router.get('/dashboard', optionalAuth, async (req, res) => {
 // 5. POLLS ENGINE
 // ==========================================
 
-router.get('/polls/active', async (req, res) => {
+router.get('/polls/active', verifyToken, async (req, res) => {
     try {
+        const enrolled = await enrolmentOf(req.user);
         const snapshot = await db.collection('polls').where('isActive', '==', true).get();
-        const polls = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // Which of these has the caller already answered? Lets the UI show results
+        // straight away instead of relying on a localStorage flag.
+        const mine = await db.collection('poll_responses').where('userId', '==', req.user.id).get();
+        const answered = new Set(mine.docs.map((d) => d.data().pollId));
+
+        const polls = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(p => !p.courseId || p.courseId === 'all' || mayAccessCourse(enrolled, p.courseId, req.user))
+            .map(p => ({ ...p, hasVoted: answered.has(p.id) }));
+
         res.json(polls);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-router.post('/polls/:id/vote', optionalAuth, async (req, res) => {
+router.post('/polls/:id/vote', verifyToken, async (req, res) => {
     const { id } = req.params;
     const { optionId } = req.body;
     if (!optionId) {
@@ -371,27 +400,147 @@ router.post('/polls/:id/vote', optionalAuth, async (req, res) => {
         }
 
         const pollData = pollDoc.data();
-        const options = pollData.options.map(opt => {
-            if (opt.id === optionId) {
-                return { ...opt, votes: (opt.votes || 0) + 1 };
-            }
-            return opt;
-        });
 
-        await pollRef.update({
-            options,
-            totalVotes: (pollData.totalVotes || 0) + 1
-        });
+        // One response per account. Previously anyone could vote repeatedly and skew
+        // the tally, and votes from signed-out visitors were all filed as 'anonymous'.
+        const existing = await db.collection('poll_responses')
+            .where('pollId', '==', id)
+            .where('userId', '==', req.user.id)
+            .get();
+        if (!existing.empty) {
+            return res.status(409).json({
+                error: 'You have already voted in this poll.',
+                options: pollData.options,
+                totalVotes: pollData.totalVotes || 0
+            });
+        }
 
-        // Record response
+        if (!pollData.options.some((opt) => opt.id === optionId)) {
+            return res.status(400).json({ error: 'That option does not belong to this poll.' });
+        }
+
+        const enrolled = await enrolmentOf(req.user);
+        if (pollData.courseId && pollData.courseId !== 'all'
+            && !mayAccessCourse(enrolled, pollData.courseId, req.user)) {
+            return denyCourse(res);
+        }
+
+        const options = pollData.options.map(opt =>
+            opt.id === optionId ? { ...opt, votes: (opt.votes || 0) + 1 } : opt
+        );
+        const totalVotes = (pollData.totalVotes || 0) + 1;
+
+        await pollRef.update({ options, totalVotes });
+
         await db.collection('poll_responses').add({
             pollId: id,
             optionId,
-            userId: req.user ? req.user.id : 'anonymous',
+            userId: req.user.id,
+            username: req.user.username,
             votedAt: new Date().toISOString()
         });
 
-        res.json({ message: 'Vote recorded', options, totalVotes: (pollData.totalVotes || 0) + 1 });
+        res.json({ message: 'Vote recorded', options, totalVotes });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Who has responded, and who hasn't. Drives the reminder button below.
+router.get('/admin/polls/:id/responses', verifyToken, requireRole('ADMIN'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pollDoc = await db.collection('polls').doc(id).get();
+        if (!pollDoc.exists) return res.status(404).json({ error: 'Poll not found' });
+        const poll = pollDoc.data();
+
+        const responses = await db.collection('poll_responses').where('pollId', '==', id).get();
+        const respondedIds = new Set(responses.docs.map((d) => d.data().userId));
+
+        // The audience is every active student the poll targets.
+        const users = await db.collection('users').get();
+        const audience = users.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((u) => u.role === 'STUDENT' && (u.status || 'ACTIVE') !== 'DISABLED')
+            .filter((u) => !poll.courseId || poll.courseId === 'all'
+                || (u.selectedCourses || []).includes(poll.courseId));
+
+        const shape = (u) => ({ id: u.id, username: u.username, displayName: u.displayName });
+
+        res.json({
+            // Individual choices are deliberately not returned — the tallies already
+            // give the distribution, and naming who picked what turns an opinion poll
+            // into a record of each student's answer.
+            responded: audience.filter((u) => respondedIds.has(u.id)).map(shape),
+            pending: audience.filter((u) => !respondedIds.has(u.id)).map(shape),
+            totalResponses: responses.size
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Nudge only the students who still owe a response.
+router.post('/admin/polls/:id/remind', verifyToken, requireRole('ADMIN'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pollDoc = await db.collection('polls').doc(id).get();
+        if (!pollDoc.exists) return res.status(404).json({ error: 'Poll not found' });
+        const poll = pollDoc.data();
+
+        const responses = await db.collection('poll_responses').where('pollId', '==', id).get();
+        const respondedIds = new Set(responses.docs.map((d) => d.data().userId));
+
+        const users = await db.collection('users').get();
+        const pendingIds = users.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((u) => u.role === 'STUDENT' && (u.status || 'ACTIVE') !== 'DISABLED')
+            .filter((u) => !poll.courseId || poll.courseId === 'all'
+                || (u.selectedCourses || []).includes(poll.courseId))
+            .filter((u) => !respondedIds.has(u.id))
+            .map((u) => u.id);
+
+        if (pendingIds.length === 0) {
+            return res.json({ message: 'Everyone has already responded.', success: 0, pending: 0 });
+        }
+
+        const result = await sendPushNotification({
+            title: '📊 Reminder: your response is needed',
+            body: `You haven't answered "${poll.question}" yet. Tap to vote.`,
+            targetUrl: '/#polls',
+            tag: `poll-reminder-${id}`,
+            userIds: pendingIds
+        });
+
+        await logAudit({
+            actorId: req.user.id, actorRole: req.user.role, action: 'POLL_REMINDER_SENT',
+            details: `Reminded ${pendingIds.length} student(s) about poll "${poll.question}"`
+        });
+
+        res.json({ message: 'Reminder dispatched', pending: pendingIds.length, result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.delete('/admin/polls/:id', verifyToken, requireRole('ADMIN'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pollDoc = await db.collection('polls').doc(id).get();
+        if (!pollDoc.exists) return res.status(404).json({ error: 'Poll not found' });
+
+        // Remove the responses too, otherwise they linger pointing at a poll that no
+        // longer exists and quietly inflate future "already voted" checks.
+        const responses = await db.collection('poll_responses').where('pollId', '==', id).get();
+        await Promise.all(responses.docs.map((d) => d.ref.delete()));
+        await db.collection('polls').doc(id).delete();
+
+        await logAudit({
+            actorId: req.user.id, actorRole: req.user.role, action: 'POLL_DELETED',
+            details: `Deleted poll "${pollDoc.data().question}" (${responses.size} responses)`
+        });
+
+        res.json({ message: 'Poll deleted', responsesDeleted: responses.size });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -432,10 +581,14 @@ router.post('/admin/polls', verifyToken, requireRole('ADMIN'), async (req, res) 
 // 6. DEADLINES ENGINE
 // ==========================================
 
-router.get('/deadlines', async (req, res) => {
+router.get('/deadlines', verifyToken, async (req, res) => {
     try {
+        const enrolled = await enrolmentOf(req.user);
         const snapshot = await db.collection('deadlines').get();
-        const deadlines = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const deadlines = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(d => !d.courseId || d.courseId === 'all' || mayAccessCourse(enrolled, d.courseId, req.user))
+            .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
         res.json(deadlines);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -478,10 +631,13 @@ router.post('/admin/deadlines', verifyToken, requireRole('ADMIN'), async (req, r
 // 7. ANNOUNCEMENTS
 // ==========================================
 
-router.get('/announcements', async (req, res) => {
+router.get('/announcements', verifyToken, async (req, res) => {
     try {
+        const enrolled = await enrolmentOf(req.user);
         const snapshot = await db.collection('announcements').get();
-        const announcements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const announcements = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(a => !a.courseId || a.courseId === 'all' || mayAccessCourse(enrolled, a.courseId, req.user));
         res.json(announcements);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -549,10 +705,26 @@ router.get('/admin/analytics', verifyToken, requireRole('ADMIN'), async (req, re
 // 9. EXISTING COURSES / WEEKS / ANSWERS ROUTES (Preserved)
 // ==========================================
 
-router.get('/courses', async (req, res) => {
+// Students receive only the courses they are enrolled in; admins receive all.
+router.get('/courses', verifyToken, async (req, res) => {
     try {
         const courses = await getCollection('courses', null, null, 'title');
-        res.json(courses);
+        const enrolled = await enrolmentOf(req.user);
+        res.json(courses.filter((c) => mayAccessCourse(enrolled, c.id, req.user)));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/*
+ * The one deliberate exception to "nothing without a login": the registration form has
+ * to offer a course list before an account exists. It returns names only — no weeks,
+ * no answers — and is the sole unauthenticated content route.
+ */
+router.get('/courses/catalogue', async (req, res) => {
+    try {
+        const courses = await getCollection('courses', null, null, 'title');
+        res.json(courses.map(({ id, title, code }) => ({ id, title, code })));
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -572,9 +744,12 @@ router.post('/courses', verifyToken, requireRole('ADMIN'), async (req, res) => {
     }
 });
 
-router.get('/courses/:courseId/weeks', async (req, res) => {
+router.get('/courses/:courseId/weeks', verifyToken, async (req, res) => {
     const { courseId } = req.params;
     try {
+        const enrolled = await enrolmentOf(req.user);
+        if (!mayAccessCourse(enrolled, courseId, req.user)) return denyCourse(res);
+
         let weeks = await getCollection('weeks', 'courseId', courseId, 'number', 'asc');
         if (weeks.length === 0 && !isNaN(courseId)) {
             weeks = await getCollection('weeks', 'courseId', Number(courseId), 'number', 'asc');
@@ -621,9 +796,17 @@ router.post('/courses/:courseId/weeks', verifyToken, requireRole('ADMIN'), async
     }
 });
 
-router.get('/weeks/:weekId/answers', async (req, res) => {
+router.get('/weeks/:weekId/answers', verifyToken, async (req, res) => {
     const { weekId } = req.params;
     try {
+        // A week ID alone reveals nothing about enrolment, so resolve it to its course
+        // before answering — otherwise /week/<id> would be an open back door.
+        const weekDoc = await db.collection('weeks').doc(weekId).get();
+        if (!weekDoc.exists) return res.status(404).json({ error: 'Week not found' });
+
+        const enrolled = await enrolmentOf(req.user);
+        if (!mayAccessCourse(enrolled, weekDoc.data().courseId, req.user)) return denyCourse(res);
+
         let answers = await getCollection('answers', 'weekId', weekId, 'questionNo', 'asc');
         if (answers.length === 0 && !isNaN(weekId)) {
             answers = await getCollection('answers', 'weekId', Number(weekId), 'questionNo', 'asc');

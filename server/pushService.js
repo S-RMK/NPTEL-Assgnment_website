@@ -95,7 +95,7 @@ const saveSubscription = async (userId, subscription, courseIds = ['all']) => {
 /**
  * Send push notification to target audience (subscribers of courseId or all)
  */
-const sendPushNotification = async ({ title, body, icon = '/icons/icon-192x192.png', image, targetUrl = '/', courseId = 'all', tag }) => {
+const sendPushNotification = async ({ title, body, icon = '/icons/icon-192x192.png', image, targetUrl = '/', courseId = 'all', tag, userIds }) => {
     if (!db) return { success: 0, failed: 0, total: 0 };
 
     // Ensures webpush.setVapidDetails has run before the first send.
@@ -104,8 +104,12 @@ const sendPushNotification = async ({ title, body, icon = '/icons/icon-192x192.p
     const snapshot = await db.collection('notification_subscriptions').get();
     let subs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    // Filter by course subscription if courseId is specified and not 'all'
-    if (courseId && courseId !== 'all') {
+    if (Array.isArray(userIds)) {
+        // Targeted send (e.g. only students who haven't answered a poll). Takes
+        // precedence over course filtering — the caller has already picked the audience.
+        const wanted = new Set(userIds);
+        subs = subs.filter((s) => wanted.has(s.userId));
+    } else if (courseId && courseId !== 'all') {
         subs = subs.filter(s =>
             !s.courseSubscriptions ||
             s.courseSubscriptions.includes('all') ||
