@@ -18,7 +18,10 @@ const Settings = () => {
 
     useEffect(() => {
         let cancelled = false;
-        api.getCourses()
+        // Must be the full catalogue, not api.getCourses(): that returns only the
+        // courses you are ALREADY enrolled in, so a student with none saw an empty
+        // picker and could never enrol, and nobody could ever add a second course.
+        api.getCourseCatalogue()
             .then((data) => { if (!cancelled) setCourses(data || []); })
             .catch((err) => { if (!cancelled) setStatus({ type: 'error', text: err.message }); })
             .finally(() => { if (!cancelled) setLoading(false); });

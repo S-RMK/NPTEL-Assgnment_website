@@ -100,9 +100,12 @@ export const api = {
         const res = await fetch(`${API_BASE}/subscriptions`, {
             method: 'POST',
             headers: getAuthHeaders(),
+            // A PushSubscription serialises through its own toJSON().
             body: JSON.stringify({ subscription, courseIds })
         });
-        return res.json();
+        // Was `res.json()` with no status check, so a 401 or 500 still looked like a
+        // success and the UI cheerfully reported "Successfully subscribed".
+        return readJson(res, 'Saving your notification subscription');
     },
 
     // --- Polls ---

@@ -618,8 +618,19 @@ router.post('/admin/deadlines', verifyToken, requireRole('ADMIN'), async (req, r
         return res.status(400).json({ error: 'Title and dueDate are required' });
     }
 
-    // A datetime-local input submits "2026-08-10T14:30" with no timezone, which different
-    // clients interpret differently. Normalise to ISO/UTC once, at write time.
+    /*
+     * dueDate must carry an explicit timezone (the client sends .toISOString(), so "Z").
+     * A bare "2026-08-10T14:30" is ambiguous: this process runs in UTC on Vercel but the
+     * admin picked the time in their own zone, so parsing it here silently shifted every
+     * deadline by their offset. Rejecting it keeps that failure loud instead of subtle.
+     */
+    const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(String(dueDate).trim());
+    if (!hasTimezone) {
+        return res.status(400).json({
+            error: 'dueDate must include a timezone offset (e.g. 2026-08-10T14:30:00.000Z).'
+        });
+    }
+
     const parsedDue = new Date(dueDate);
     if (Number.isNaN(parsedDue.getTime())) {
         return res.status(400).json({ error: `Could not understand the due date: "${dueDate}"` });

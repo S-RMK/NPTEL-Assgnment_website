@@ -111,7 +111,20 @@ const AdminDashboard = () => {
     const handleCreateDeadline = async (e) => {
         e.preventDefault();
         try {
-            await api.createDeadline({ title: deadlineTitle, courseId: deadlineCourseId, dueDate: deadlineDate });
+            // A datetime-local input yields "2026-08-06T00:00" with no timezone. Convert
+            // it here, in the browser that produced it — the server runs in UTC, so
+            // parsing it there read your local midnight as midnight UTC and shifted
+            // every deadline by your offset.
+            const dueDate = new Date(deadlineDate);
+            if (Number.isNaN(dueDate.getTime())) {
+                alert('Please pick a valid due date and time.');
+                return;
+            }
+            await api.createDeadline({
+                title: deadlineTitle,
+                courseId: deadlineCourseId,
+                dueDate: dueDate.toISOString()
+            });
             alert('Deadline scheduled!');
             setDeadlineTitle('');
             setDeadlineDate('');
