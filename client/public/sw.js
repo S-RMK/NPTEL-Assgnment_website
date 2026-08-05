@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nptel-answers-v1';
+const CACHE_NAME = 'nptel-answers-v2';
 const PRECACHE_ASSETS = [
     '/',
     '/index.html',
@@ -39,11 +39,13 @@ self.addEventListener('fetch', (event) => {
     if (url.pathname.startsWith('/api/')) {
         event.respondWith(
             fetch(event.request)
-                .then((response) => {
-                    return response;
-                })
-                .catch(() => {
-                    return caches.match(event.request);
+                .then((response) => response)
+                .catch(async () => {
+                    const cached = await caches.match(event.request);
+                    return cached || new Response(JSON.stringify({ error: 'Offline - Network Unavailable' }), {
+                        status: 503,
+                        headers: { 'Content-Type': 'application/json' }
+                    });
                 })
         );
         return;
@@ -65,11 +67,15 @@ self.addEventListener('fetch', (event) => {
                     }
                     return networkResponse;
                 })
-                .catch(() => {
-                    // Navigation fallback to index.html if offline
+                .catch(async () => {
                     if (event.request.mode === 'navigate') {
-                        return caches.match('/index.html');
+                        const cachedIndex = await caches.match('/index.html');
+                        return cachedIndex || new Response('<!DOCTYPE html><html><body>Offline</body></html>', {
+                            status: 200,
+                            headers: { 'Content-Type': 'text/html' }
+                        });
                     }
+                    return new Response('Asset unavailable offline', { status: 404 });
                 });
         })
     );
