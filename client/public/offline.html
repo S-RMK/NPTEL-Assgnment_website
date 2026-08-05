@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#4f46e5" />
+    <title>Offline — NPTEL Answers</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        background: #0f172a;
+        color: #e2e8f0;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        text-align: center;
+      }
+      .card {
+        max-width: 26rem;
+        padding: 2.5rem 2rem;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .badge {
+        width: 68px;
+        height: 68px;
+        margin: 0 auto 1.25rem;
+        display: grid;
+        place-items: center;
+        border-radius: 18px;
+        background: linear-gradient(135deg, #4f46e5, #9333ea);
+        font-size: 2rem;
+        font-weight: 700;
+        color: #fff;
+      }
+      h1 { margin: 0 0 0.5rem; font-size: 1.4rem; }
+      p { margin: 0 0 1.5rem; color: #94a3b8; font-size: 0.95rem; line-height: 1.6; }
+      button {
+        padding: 0.7rem 1.5rem;
+        border: none;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #4f46e5, #9333ea);
+        color: #fff;
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:active { opacity: 0.85; }
+      .hint { margin: 1.25rem 0 0; font-size: 0.8rem; color: #64748b; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="badge">N</div>
+      <h1>You're offline</h1>
+      <p>
+        This page hasn't been saved for offline use yet. Pages you've already visited —
+        including your dashboard and downloaded answers — stay available without a connection.
+      </p>
+      <button onclick="location.reload()">Try again</button>
+      <p class="hint">NPTEL Answers reconnects automatically once you're back online.</p>
+    </div>
+    <script>
+      // Reload as soon as connectivity returns, so the user doesn't have to tap.
+      window.addEventListener('online', () => location.reload());
+    </script>
+  </body>
+</html>

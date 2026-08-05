@@ -19,10 +19,6 @@ const Dashboard = () => {
     });
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        loadDashboard();
-    }, []);
-
     const loadDashboard = async () => {
         try {
             const data = await api.getDashboard();
@@ -33,6 +29,19 @@ const Dashboard = () => {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        loadDashboard();
+    }, []);
+
+    // The manifest's app shortcuts deep-link to /#deadlines and /#polls. Those sections
+    // only exist once dashboard data has rendered, so scroll once loading finishes
+    // rather than letting the browser's native anchor jump fire against an empty page.
+    useEffect(() => {
+        if (loading || !window.location.hash) return;
+        const target = document.getElementById(window.location.hash.slice(1));
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, [loading]);
 
     return (
         <div style={{ paddingBottom: '3rem' }}>
@@ -63,7 +72,7 @@ const Dashboard = () => {
 
             {/* Upcoming Deadlines Section */}
             {dashboardData.deadlines && dashboardData.deadlines.length > 0 && (
-                <div style={{ marginBottom: '2rem' }}>
+                <div id="deadlines" style={{ marginBottom: '2rem', scrollMarginTop: '5rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
                         <Calendar size={20} color="#f59e0b" />
                         <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Upcoming Deadlines</h3>
@@ -89,7 +98,7 @@ const Dashboard = () => {
 
             {/* Active Community Polls */}
             {dashboardData.polls && dashboardData.polls.length > 0 && (
-                <div style={{ marginBottom: '2rem' }}>
+                <div id="polls" style={{ marginBottom: '2rem', scrollMarginTop: '5rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
                         <Vote size={20} color="#c084fc" />
                         <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Active Polls</h3>

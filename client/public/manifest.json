@@ -1,38 +1,64 @@
 {
+  "id": "/",
   "short_name": "NPTEL Answers",
   "name": "NPTEL Assignment Answers & Dashboard",
   "description": "Offline-ready Progressive Web App for NPTEL Assignment Answers, Deadline Reminders, and Polls.",
+  "lang": "en",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#4f46e5",
+  "categories": ["education", "productivity"],
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
       "type": "image/png",
       "sizes": "192x192",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-512x512.png",
       "type": "image/png",
       "sizes": "512x512",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
     }
   ],
-  "start_url": "/",
-  "background_color": "#0f172a",
-  "theme_color": "#4f46e5",
-  "display": "standalone",
-  "orientation": "portrait",
-  "categories": ["education", "productivity"],
   "shortcuts": [
     {
       "name": "Upcoming Deadlines",
       "short_name": "Deadlines",
+      "description": "Live countdowns for your assignment deadlines",
       "url": "/#deadlines",
       "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
     },
     {
       "name": "Active Polls",
       "short_name": "Polls",
+      "description": "Vote on assignment questions and see live results",
       "url": "/#polls",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Browse Courses",
+      "short_name": "Courses",
+      "description": "Open your enrolled NPTEL courses and weekly answers",
+      "url": "/courses",
       "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
     }
   ]

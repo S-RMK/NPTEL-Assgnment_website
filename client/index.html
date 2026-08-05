@@ -2,19 +2,34 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
+    <title>NPTEL Answers & Course Dashboard</title>
+    <meta name="description" content="NPTEL Assignment Answers, Deadline Reminders, Polls & Course Dashboard" />
+
+    <!-- Icons: SVG favicon for desktop tabs, PNG for browsers without SVG support,
+         apple-touch-icon for the iOS home screen (iOS ignores the web app manifest). -->
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+    <link rel="manifest" href="/manifest.json" />
+
     <meta name="theme-color" content="#4f46e5" />
+    <meta name="color-scheme" content="dark" />
+    <!-- `apple-mobile-web-app-capable` is the legacy spelling; both are needed for
+         standalone launch across current iOS and Android browsers. -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="description" content="NPTEL Assignment Answers, Deadline Reminders, Polls & Course Dashboard" />
-    <link rel="manifest" href="/manifest.json" />
-    <title>NPTEL Answers & Course Dashboard</title>
+    <meta name="apple-mobile-web-app-title" content="NPTEL Answers" />
+    <meta name="application-name" content="NPTEL Answers" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
+      // Registered from the HTML rather than the bundle so the worker is picked up even
+      // if the JS bundle fails to parse. UpdatePrompt handles the update lifecycle.
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js')

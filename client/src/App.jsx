@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Home from './pages/Home';
@@ -9,6 +9,8 @@ import Register from './pages/Register';
 import AdminDashboard from './pages/AdminDashboard';
 import Dashboard from './components/Dashboard';
 import InstallPrompt from './components/InstallPrompt';
+import UpdatePrompt from './components/UpdatePrompt';
+import OfflineIndicator from './components/OfflineIndicator';
 import './styles/global.css';
 import './styles/components.css';
 import { BookOpen, Shield, LogIn, LogOut, User, LayoutDashboard, Plus } from 'lucide-react';
@@ -118,6 +120,8 @@ function App() {
             </Routes>
           </main>
           <InstallPrompt />
+          <UpdatePrompt />
+          <OfflineIndicator />
         </Router>
       </AuthProvider>
     </AppProvider>
