@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-        "build": "npm run build --prefix client"
+        "build": "cd client && npm run build"
     },
     "workspaces": [
         "client",
