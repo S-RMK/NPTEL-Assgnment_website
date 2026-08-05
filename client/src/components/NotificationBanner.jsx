@@ -24,6 +24,34 @@ const urlBase64ToUint8Array = (base64String) => {
     return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 };
 
+const bufferToUrlBase64 = (buffer) =>
+    btoa(String.fromCharCode(...new Uint8Array(buffer)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+/*
+ * A PushSubscription is permanently bound to the VAPID key it was created with. This
+ * app previously generated a fresh key on every server start, so browsers are still
+ * holding subscriptions tied to keys that no longer exist.
+ *
+ * Two things go wrong if that is not handled:
+ *   - pushManager.subscribe() throws InvalidStateError ("a subscription with a
+ *     different applicationServerKey already exists"), so enabling silently fails;
+ *   - re-syncing the stale subscription to the server gives it an endpoint that can
+ *     only ever return 403, which the server then prunes — leaving 0 subscribers.
+ *
+ * So: compare the existing subscription's key against the server's current one and
+ * discard it if they differ.
+ */
+const matchesServerKey = (subscription, serverKey) => {
+    const key = subscription?.options?.applicationServerKey;
+    if (!key) return false;
+    try {
+        return bufferToUrlBase64(key) === serverKey;
+    } catch {
+        return false;
+    }
+};
+
 const NotificationBanner = () => {
     const [subscribed, setSubscribed] = useState(null); // null = still checking
     const [loading, setLoading] = useState(false);
@@ -43,16 +71,24 @@ const NotificationBanner = () => {
                 const existing = await reg.pushManager.getSubscription();
                 if (cancelled) return;
 
-                if (existing) {
-                    // The browser already holds a subscription. Re-send it so a server
-                    // that lost the record (or pruned it as dead) picks it up again.
-                    try {
-                        await api.savePushSubscription(existing, user?.selectedCourses || ['all']);
-                    } catch { /* offline or signed out; retried on next visit */ }
-                    setSubscribed(true);
-                } else {
+                if (!existing) { setSubscribed(false); return; }
+
+                const serverKey = await api.getVapidPublicKey().catch(() => null);
+                if (cancelled) return;
+
+                if (serverKey && !matchesServerKey(existing, serverKey)) {
+                    // Bound to a key this server no longer has: it can never receive.
+                    await existing.unsubscribe().catch(() => {});
                     setSubscribed(false);
+                    return;
                 }
+
+                // Valid subscription — re-send it so a server that lost the record
+                // (or pruned it as dead) picks it up again.
+                try {
+                    await api.savePushSubscription(existing, user?.selectedCourses || ['all']);
+                } catch { /* offline or signed out; retried on next visit */ }
+                setSubscribed(true);
             } catch {
                 if (!cancelled) setSubscribed(false);
             }
@@ -76,10 +112,19 @@ const NotificationBanner = () => {
             const publicKey = await api.getVapidPublicKey();
             if (!publicKey) throw new Error('The server did not return a notification key.');
 
-            const subscription = await reg.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(publicKey)
-            });
+            // Clear any subscription tied to an older key, otherwise subscribe() throws
+            // InvalidStateError and enabling appears to do nothing.
+            const stale = await reg.pushManager.getSubscription();
+            if (stale && !matchesServerKey(stale, publicKey)) {
+                await stale.unsubscribe().catch(() => {});
+            }
+
+            const subscription = stale && matchesServerKey(stale, publicKey)
+                ? stale
+                : await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(publicKey)
+                });
 
             // Only now is it real — this throws if the server rejects it.
             await api.savePushSubscription(subscription, user?.selectedCourses || ['all']);
