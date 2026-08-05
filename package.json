@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-        "build": "cd client && npm run build"
+        "build": "node -e \"const fs=require('fs'); const cp=require('child_process'); if (fs.existsSync('client/package.json')) process.chdir('client'); cp.execSync('npm run build', {stdio: 'inherit'});\""
     },
     "workspaces": [
         "client",
