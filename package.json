@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-        "build": "node -e \"const fs=require('fs'); const cp=require('child_process'); if (fs.existsSync('client/package.json')) process.chdir('client'); cp.execSync('npm run build', {stdio: 'inherit'});\""
+        "build": "node -e \"const fs=require('fs'); const cp=require('child_process'); if (fs.existsSync('client/package.json')) process.chdir('client'); cp.execSync('npm run build', {stdio: 'inherit'}); const src='dist'; const targets=['../dist', '../client/dist', 'dist', 'client/dist']; targets.forEach(t => { try { if (fs.existsSync(src)) fs.cpSync(src, t, {recursive: true}); } catch(e){} });\""
     },
     "workspaces": [
         "client",
