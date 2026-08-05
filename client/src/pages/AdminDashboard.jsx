@@ -6,6 +6,7 @@ import {
     Send, UserCheck, UserX
 } from 'lucide-react';
 import PollAdminCard from '../components/PollAdminCard';
+import UserRow from '../components/UserRow';
 import DeadlineCard from '../components/DeadlineCard';
 import Spinner from '../components/Spinner';
 
@@ -134,15 +135,7 @@ const AdminDashboard = () => {
         }
     };
 
-    const toggleUserStatus = async (userId, currentStatus) => {
-        const newStatus = currentStatus === 'DISABLED' ? 'ACTIVE' : 'DISABLED';
-        try {
-            await api.updateUser(userId, { status: newStatus });
-            loadAdminData();
-        } catch (err) {
-            alert('Failed to update user status: ' + err.message);
-        }
-    };
+    // Enable/disable now lives in UserRow, alongside enrolment editing.
 
     if (!isAdmin) {
         return (
@@ -278,41 +271,7 @@ const AdminDashboard = () => {
                         <h3 style={{ margin: '0 0 1rem 0' }}>User Management ({usersList.length} total)</h3>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                             {usersList.map(u => (
-                                <div key={u.id} style={{
-                                    padding: '1rem',
-                                    borderRadius: '12px',
-                                    background: 'rgba(255,255,255,0.03)',
-                                    border: '1px solid var(--clr-border)',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center'
-                                }}>
-                                    <div>
-                                        <strong style={{ fontSize: '1rem' }}>{u.displayName || u.username}</strong>
-                                        <span style={{ fontSize: '0.8rem', color: 'var(--clr-text-muted)', marginLeft: '0.5rem' }}>@{u.username}</span>
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--clr-text-muted)', marginTop: '0.2rem' }}>
-                                            Role: <span style={{ color: u.role === 'ADMIN' ? '#f59e0b' : '#34d399', fontWeight: 600 }}>{u.role}</span> | Status: {u.status || 'ACTIVE'}
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => toggleUserStatus(u.id, u.status)}
-                                        style={{
-                                            padding: '0.4rem 0.8rem',
-                                            borderRadius: '8px',
-                                            border: 'none',
-                                            background: u.status === 'DISABLED' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                                            color: u.status === 'DISABLED' ? '#34d399' : '#f87171',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '0.4rem',
-                                            fontSize: '0.85rem'
-                                        }}
-                                    >
-                                        {u.status === 'DISABLED' ? <UserCheck size={16} /> : <UserX size={16} />}
-                                        {u.status === 'DISABLED' ? 'Enable' : 'Disable'}
-                                    </button>
-                                </div>
+                                <UserRow key={u.id} user={u} courses={courses} onChanged={loadAdminData} />
                             ))}
                         </div>
                     </div>

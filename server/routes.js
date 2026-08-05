@@ -94,6 +94,14 @@ router.post('/auth/register', async (req, res) => {
     if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required.' });
     }
+    if (String(password).length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    }
+    // Enrolment now decides what a student can see, so an account with no courses lands
+    // on an empty app. Require at least one up front rather than letting them find out.
+    if (!Array.isArray(selectedCourses) || selectedCourses.length === 0) {
+        return res.status(400).json({ error: 'Please select at least one course you are enrolled in.' });
+    }
 
     try {
         const existing = await db.collection('users').where('username', '==', username.trim()).get();
@@ -233,10 +241,10 @@ router.get('/users', verifyToken, requireRole('ADMIN'), async (req, res) => {
     }
 });
 
-// PATCH /api/users/:id (Admin Update Role / Status / Password)
+// PATCH /api/users/:id (Admin Update Role / Status / Password / Enrolment)
 router.patch('/users/:id', verifyToken, requireRole('ADMIN'), async (req, res) => {
     const { id } = req.params;
-    const { role, status, newPassword } = req.body;
+    const { role, status, newPassword, selectedCourses } = req.body;
 
     try {
         const updates = {};
@@ -244,6 +252,15 @@ router.patch('/users/:id', verifyToken, requireRole('ADMIN'), async (req, res) =
         if (status) updates.status = status;
         if (newPassword) {
             updates.passwordHash = await bcrypt.hash(newPassword, 10);
+        }
+        // Without this an admin cannot rescue a student who has no courses selected —
+        // that student sees an empty app and only their own password can fix it.
+        if (Array.isArray(selectedCourses)) {
+            updates.selectedCourses = selectedCourses;
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({ error: 'No updatable fields supplied.' });
         }
 
         await db.collection('users').doc(id).update(updates);

@@ -90,8 +90,9 @@ export const api = {
 
     // --- Push Notifications ---
     getVapidPublicKey: async () => {
-        const res = await fetch(`${API_BASE}/push/vapid-key`);
-        const data = await res.json();
+        // Requires a token: the endpoint is authenticated along with the rest of the API.
+        const res = await fetch(`${API_BASE}/push/vapid-key`, { headers: getAuthHeaders() });
+        const data = await readJson(res, 'Preparing notifications');
         return data.publicKey;
     },
 
