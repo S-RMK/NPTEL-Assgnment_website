@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const routes = require('./routes');
+const { initScheduler } = require('./scheduler');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -16,6 +17,9 @@ app.use((req, res, next) => {
 });
 
 app.use('/api', routes);
+
+// Initialize background deadline reminder scheduler
+initScheduler();
 
 // Serve static files from React build
 app.use(express.static(path.join(__dirname, '../client/dist')));
@@ -32,3 +36,4 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 module.exports = app;
+

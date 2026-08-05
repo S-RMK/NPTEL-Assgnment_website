@@ -6,13 +6,14 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyDq1ajyKHyjxWQV-7NSr4DqW5queUhZ41o",
-    authDomain: "nptel-a96f7.firebaseapp.com",
-    projectId: "nptel-a96f7",
-    storageBucket: "nptel-a96f7.firebasestorage.app",
-    messagingSenderId: "262460748102",
-    appId: "1:262460748102:web:b0fae48a70911481303547",
-    measurementId: "G-5HJ201R7NH"
+  apiKey: "AIzaSyCeJnRvUbN1n8sjr7uICjmOpCs1zLqIEg4",
+  authDomain: "nptel-nightowls.firebaseapp.com",
+  databaseURL: "https://nptel-nightowls-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "nptel-nightowls",
+  storageBucket: "nptel-nightowls.firebasestorage.app",
+  messagingSenderId: "473751337343",
+  appId: "1:473751337343:web:a6d80e2d2bfc2f93d9c24a",
+  measurementId: "G-XW94STN33P"
 };
 
 // Initialize Firebase

@@ -1,0 +1,39 @@
+{
+  "short_name": "NPTEL Answers",
+  "name": "NPTEL Assignment Answers & Dashboard",
+  "description": "Offline-ready Progressive Web App for NPTEL Assignment Answers, Deadline Reminders, and Polls.",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#4f46e5",
+  "display": "standalone",
+  "orientation": "portrait",
+  "categories": ["education", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Upcoming Deadlines",
+      "short_name": "Deadlines",
+      "url": "/#deadlines",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Active Polls",
+      "short_name": "Polls",
+      "url": "/#polls",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    }
+  ]
+}
